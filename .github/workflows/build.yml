@@ -1,0 +1,65 @@
+name: Build EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT }}
+
+      - name: Download & Extract wkhtmltox
+        run: |
+          echo "Downloading wkhtmltox..."
+          Invoke-WebRequest -Uri "https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.6/wkhtmltox-0.12.6-1.msvc2015-win64.exe" -OutFile "wkhtmltox-installer.exe"
+          echo "Installing silently..."
+          Start-Process -FilePath "wkhtmltox-installer.exe" -ArgumentList "/S", "/D=$PWD\wkhtmltox" -Wait
+          mkdir bin -Force
+          Copy-Item "wkhtmltox\bin\wkhtmltoimage.exe" "bin\"
+          Copy-Item "wkhtmltox\bin\wkhtmltopdf.exe" "bin\"
+          Copy-Item "wkhtmltox\bin\*.dll" "bin\" -Force
+          echo "wkhtmltoimage size: $((Get-Item bin\wkhtmltoimage.exe).Length / 1MB) MB"
+
+      - name: Create sender_names.txt
+        run: |
+          @"
+          John Doe
+          Jane Smith
+          Alice Johnson
+          Bob Brown
+          "@ | Out-File -FilePath sender_names.txt -Encoding utf8
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller customtkinter pandas pillow google-auth google-auth-oauthlib google-api-python-client weasyprint
+
+      - name: Build EXE
+        run: |
+          pyinstaller --onefile --windowed --icon=app_icon.ico --name Mail_Storm `
+            --add-data "bin;bin" `
+            --add-data "eye_open.png;." `
+            --add-data "eye_closed.png;." `
+            --add-data "sender_names.txt;." `
+            --hidden-import=weasyprint `
+            --hidden-import=googleapiclient.discovery `
+            QW1.PY
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mail_Storm_Private
+          path: dist/Mail_Storm.exe
